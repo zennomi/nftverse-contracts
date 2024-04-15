@@ -131,7 +131,7 @@ describe("NFTVerse Marketplace", () => {
         it("Buyer should offer NFT", async () => {
             const offerPrice = 1000;
             await payableToken.connect(buyer).approve(marketplace.address, toWei(offerPrice));
-            const tx = await marketplace.connect(buyer).offerNFT(nft.address, tokenId, payableToken.address, toWei(offerPrice));
+            const tx = await marketplace.connect(buyer).offerNFT(nft.address, tokenId, toWei(offerPrice));
             const receipt = await tx.wait();
             const events = receipt.events?.filter((e: any) => e.event == 'OfferredNFT') as any;
             const eventOfferer = events[0].args.offerer;
@@ -157,7 +157,7 @@ describe("NFTVerse Marketplace", () => {
         it("Offerer should offer NFT", async () => {
             const offerPrice = 1000;
             await payableToken.connect(offerer).approve(marketplace.address, toWei(offerPrice));
-            const tx = await marketplace.connect(offerer).offerNFT(nft.address, tokenId, payableToken.address, toWei(offerPrice));
+            const tx = await marketplace.connect(offerer).offerNFT(nft.address, tokenId, toWei(offerPrice));
             const receipt = await tx.wait();
             const events = receipt.events?.filter((e: any) => e.event == 'OfferredNFT') as any;
             const eventOfferer = events[0].args.offerer;
@@ -267,6 +267,53 @@ describe("NFTVerse Marketplace", () => {
             } catch (error) {
 
             }
+        })
+    })
+
+    describe("List and Buy by ETH", () => {
+        const tokenId = 3;
+        it("Creator should mint NFT", async () => {
+            const to = await creator.getAddress();
+            const uri = 'kuiper.io'
+            await nft.connect(creator).safeMint(to, uri);
+            expect(await nft.ownerOf(tokenId)).to.eq(to, "Mint NFT is failed.");
+        })
+
+        it("Creator should list NFT on the marketplace", async () => {
+            await nft.connect(creator).approve(marketplace.address, tokenId);
+
+            const tx = await marketplace.connect(creator).listNft(nft.address, tokenId, ethers.constants.AddressZero, toWei(100000));
+            const receipt = await tx.wait();
+            const events = receipt.events?.filter((e: any) => e.event == 'ListedNFT') as any;
+            const eventNFT = events[0].args.nft;
+            const eventTokenId = events[0].args.tokenId;
+            expect(eventNFT).eq(nft.address, "NFT is wrong.");
+            expect(eventTokenId).eq(tokenId, "TokenId is wrong.");
+        })
+
+        it("Creator should cancel listed item", async () => {
+            await marketplace.connect(creator).cancelListedNFT(nft.address, tokenId);
+            expect(await nft.ownerOf(tokenId)).eq(await creator.getAddress(), "Cancel listed item is failed.");
+        })
+
+        it("Creator should list NFT on the marketplace again!", async () => {
+            await nft.connect(creator).approve(marketplace.address, tokenId);
+
+            const tx = await marketplace.connect(creator).listNft(nft.address, tokenId, ethers.constants.AddressZero, toWei(100));
+            const receipt = await tx.wait();
+            const events = receipt.events?.filter((e: any) => e.event == 'ListedNFT') as any;
+            const eventNFT = events[0].args.nft;
+            const eventTokenId = events[0].args.tokenId;
+            expect(eventNFT).eq(nft.address, "NFT is wrong.");
+            expect(eventTokenId).eq(tokenId, "TokenId is wrong.");
+        })
+
+        it("Buyer should buy listed NFT", async () => {
+            const tokenId = 3;
+            const buyPrice = 101;
+            await payableToken.connect(buyer).approve(marketplace.address, toWei(buyPrice));
+            await marketplace.connect(buyer).buyNFTByETH(nft.address, tokenId, { value: toWei(buyPrice) });
+            expect(await nft.ownerOf(tokenId)).eq(await buyer.getAddress(), "Buy NFT is failed.");
         })
     })
 })

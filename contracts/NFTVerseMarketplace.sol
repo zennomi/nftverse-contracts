@@ -135,13 +135,11 @@ contract NFTVerseMarketplace is Ownable, ReentrancyGuard {
         address caller
     );
 
-    constructor(
-        uint256 _platformFee,
-        address _feeRecipient
-    ) {
+    constructor(uint256 _platformFee, address _feeRecipient) {
         require(_platformFee <= 10000, "can't more than 10 percent");
         platformFee = _platformFee;
         feeRecipient = _feeRecipient;
+        payableToken[address(0)] = true;
     }
 
     modifier isListedNFT(address _nft, uint256 _tokenId) {
@@ -194,10 +192,7 @@ contract NFTVerseMarketplace is Ownable, ReentrancyGuard {
     }
 
     modifier isPayableToken(address _payToken) {
-        require(
-            _payToken != address(0) && payableToken[_payToken],
-            "invalid pay token"
-        );
+        require(payableToken[_payToken], "invalid pay token");
         _;
     }
 
@@ -252,8 +247,6 @@ contract NFTVerseMarketplace is Ownable, ReentrancyGuard {
 
         listedNft.sold = true;
 
-        uint256 totalPrice = _price;
-
         // Calculate & Transfer platfrom fee
         uint256 platformFeeTotal = calculatePlatformFee(_price);
         IERC20(listedNft.payToken).transferFrom(
@@ -266,9 +259,37 @@ contract NFTVerseMarketplace is Ownable, ReentrancyGuard {
         IERC20(listedNft.payToken).transferFrom(
             msg.sender,
             listedNft.seller,
-            totalPrice - platformFeeTotal
+            _price - platformFeeTotal
         );
 
+        // Transfer NFT to buyer
+        _buyNFT(listedNft, _price);
+    }
+
+    function buyNFTByETH(
+        address _nft,
+        uint256 _tokenId
+    ) external payable isListedNFT(_nft, _tokenId) {
+        ListNFT storage listedNft = listNfts[_nft][_tokenId];
+        uint256 _price = msg.value;
+        require(listedNft.payToken == address(0), "invalid pay token");
+        require(!listedNft.sold, "nft already sold");
+        require(_price >= listedNft.price, "invalid price");
+
+        listedNft.sold = true;
+
+        // Calculate & Transfer platfrom fee
+        uint256 platformFeeTotal = calculatePlatformFee(_price);
+        payable(feeRecipient).transfer(platformFeeTotal);
+
+        // Transfer to nft owner
+        payable(listedNft.seller).transfer(_price - platformFeeTotal);
+
+        // Transfer NFT to buyer
+        _buyNFT(listedNft, _price);
+    }
+
+    function _buyNFT(ListNFT storage listedNft, uint256 _price) internal {
         // Transfer NFT to buyer
         IERC721(listedNft.nft).safeTransferFrom(
             address(this),
@@ -290,23 +311,40 @@ contract NFTVerseMarketplace is Ownable, ReentrancyGuard {
     function offerNFT(
         address _nft,
         uint256 _tokenId,
-        address _payToken,
         uint256 _offerPrice
     ) external isListedNFT(_nft, _tokenId) {
         require(_offerPrice > 0, "price can not 0");
-
         ListNFT memory nft = listNfts[_nft][_tokenId];
+        require(nft.payToken != address(0), "invalid pay token");
+
         IERC20(nft.payToken).transferFrom(
             msg.sender,
             address(this),
             _offerPrice
         );
 
-        offerNfts[_nft][_tokenId][msg.sender] = OfferNFT({
+        _offerNFT(nft, _offerPrice);
+    }
+
+    function offerNFTByETH(
+        address _nft,
+        uint256 _tokenId
+    ) external payable isListedNFT(_nft, _tokenId) {
+        uint256 _offerPrice = msg.value;
+        require(_offerPrice > 0, "price can not 0");
+
+        ListNFT memory nft = listNfts[_nft][_tokenId];
+        require(nft.payToken == address(0), "invalid pay token");
+
+        _offerNFT(nft, _offerPrice);
+    }
+
+    function _offerNFT(ListNFT memory nft, uint256 _offerPrice) internal {
+        offerNfts[nft.nft][nft.tokenId][msg.sender] = OfferNFT({
             nft: nft.nft,
             tokenId: nft.tokenId,
             offerer: msg.sender,
-            payToken: _payToken,
+            payToken: nft.payToken,
             offerPrice: _offerPrice,
             accepted: false
         });
@@ -328,8 +366,26 @@ contract NFTVerseMarketplace is Ownable, ReentrancyGuard {
         OfferNFT memory offer = offerNfts[_nft][_tokenId][msg.sender];
         require(offer.offerer == msg.sender, "not offerer");
         require(!offer.accepted, "offer already accepted");
-        delete offerNfts[_nft][_tokenId][msg.sender];
+        require(offer.payToken != address(0), "invalid pay token");
         IERC20(offer.payToken).transfer(offer.offerer, offer.offerPrice);
+        _cancelOfferNFT(offer);
+    }
+
+    function cancelOfferNFTByETH(
+        address _nft,
+        uint256 _tokenId
+    ) external isOfferredNFT(_nft, _tokenId, msg.sender) {
+        OfferNFT memory offer = offerNfts[_nft][_tokenId][msg.sender];
+        require(offer.offerer == msg.sender, "not offerer");
+        require(!offer.accepted, "offer already accepted");
+        require(offer.payToken == address(0), "invalid pay token");
+        payable(offer.offerer).transfer(offer.offerPrice);
+        _cancelOfferNFT(offer);
+    }
+
+    function _cancelOfferNFT(OfferNFT memory offer) internal {
+        delete offerNfts[offer.nft][offer.tokenId][msg.sender];
+
         emit CanceledOfferredNFT(
             offer.nft,
             offer.tokenId,
@@ -364,14 +420,22 @@ contract NFTVerseMarketplace is Ownable, ReentrancyGuard {
         uint256 offerPrice = offer.offerPrice;
         uint256 totalPrice = offerPrice;
 
-        IERC20 payToken = IERC20(offer.payToken);
-
-        // Calculate & Transfer platfrom fee
         uint256 platformFeeTotal = calculatePlatformFee(offerPrice);
-        payToken.transfer(feeRecipient, platformFeeTotal);
+        if (offer.payToken == address(0)) {
+            // Calculate & Transfer platfrom fee
+            payable(feeRecipient).transfer(platformFeeTotal);
 
-        // Transfer to seller
-        payToken.transfer(list.seller, totalPrice - platformFeeTotal);
+            // Transfer to seller
+            payable(list.seller).transfer(totalPrice - platformFeeTotal);
+        } else {
+            IERC20 payToken = IERC20(offer.payToken);
+
+            // Calculate & Transfer platfrom fee
+            payToken.transfer(feeRecipient, platformFeeTotal);
+
+            // Transfer to seller
+            payToken.transfer(list.seller, totalPrice - platformFeeTotal);
+        }
 
         // Transfer NFT to offerer
         IERC721(list.nft).safeTransferFrom(
@@ -470,6 +534,8 @@ contract NFTVerseMarketplace is Ownable, ReentrancyGuard {
         );
 
         AuctionNFT storage auction = auctionNfts[_nft][_tokenId];
+
+        require(auction.payToken != address(0), "invalid pay token");
         IERC20 payToken = IERC20(auction.payToken);
         payToken.transferFrom(msg.sender, address(this), _bidPrice);
 
@@ -481,11 +547,56 @@ contract NFTVerseMarketplace is Ownable, ReentrancyGuard {
             payToken.transfer(lastBidder, lastBidPrice);
         }
 
+        _bidPlace(auction, _bidPrice);
+    }
+
+    function bidPlaceByETH(
+        address _nft,
+        uint256 _tokenId
+    ) external payable isAuction(_nft, _tokenId) {
+        uint256 _bidPrice = msg.value;
+        require(
+            block.timestamp >= auctionNfts[_nft][_tokenId].startTime,
+            "auction not start"
+        );
+        require(
+            block.timestamp <= auctionNfts[_nft][_tokenId].endTime,
+            "auction ended"
+        );
+        require(
+            _bidPrice >=
+                auctionNfts[_nft][_tokenId].heighestBid +
+                    auctionNfts[_nft][_tokenId].minBid,
+            "less than min bid price"
+        );
+
+        AuctionNFT storage auction = auctionNfts[_nft][_tokenId];
+
+        require(auction.payToken == address(0), "invalid pay token");
+
+        if (auction.lastBidder != address(0)) {
+            address lastBidder = auction.lastBidder;
+            uint256 lastBidPrice = auction.heighestBid;
+
+            // Transfer back to last bidder
+            payable(lastBidder).transfer(lastBidPrice);
+        }
+
+        _bidPlace(auction, _bidPrice);
+    }
+
+    function _bidPlace(AuctionNFT storage auction, uint256 _bidPrice) internal {
         // Set new heighest bid price
         auction.lastBidder = msg.sender;
         auction.heighestBid = _bidPrice;
 
-        emit PlacedBid(_nft, _tokenId, auction.payToken, _bidPrice, msg.sender);
+        emit PlacedBid(
+            auction.nft,
+            auction.tokenId,
+            auction.payToken,
+            _bidPrice,
+            msg.sender
+        );
     }
 
     // @notice Result auction, can call by auction creator, heighest bidder, or marketplace owner only!
@@ -503,7 +614,6 @@ contract NFTVerseMarketplace is Ownable, ReentrancyGuard {
         );
 
         AuctionNFT storage auction = auctionNfts[_nft][_tokenId];
-        IERC20 payToken = IERC20(auction.payToken);
         IERC721 nft = IERC721(auction.nft);
 
         auction.success = true;
@@ -512,12 +622,21 @@ contract NFTVerseMarketplace is Ownable, ReentrancyGuard {
         uint256 heighestBid = auction.heighestBid;
         uint256 totalPrice = heighestBid;
 
-        // Calculate & Transfer platfrom fee
         uint256 platformFeeTotal = calculatePlatformFee(heighestBid);
-        payToken.transfer(feeRecipient, platformFeeTotal);
 
-        // Transfer to auction creator
-        payToken.transfer(auction.creator, totalPrice - platformFeeTotal);
+        if (auction.payToken == address(0)) {
+            // Calculate & Transfer platfrom fee
+            payable(feeRecipient).transfer(platformFeeTotal);
+            // Transfer to auction creator
+            payable(auction.creator).transfer(totalPrice - platformFeeTotal);
+        } else {
+            IERC20 payToken = IERC20(auction.payToken);
+            // Calculate & Transfer platfrom fee
+            payToken.transfer(feeRecipient, platformFeeTotal);
+
+            // Transfer to auction creator
+            payToken.transfer(auction.creator, totalPrice - platformFeeTotal);
+        }
 
         // Transfer NFT to the winner
         nft.transferFrom(address(this), auction.lastBidder, auction.tokenId);
