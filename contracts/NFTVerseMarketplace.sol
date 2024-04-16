@@ -366,20 +366,11 @@ contract NFTVerseMarketplace is Ownable, ReentrancyGuard {
         OfferNFT memory offer = offerNfts[_nft][_tokenId][msg.sender];
         require(offer.offerer == msg.sender, "not offerer");
         require(!offer.accepted, "offer already accepted");
-        require(offer.payToken != address(0), "invalid pay token");
-        IERC20(offer.payToken).transfer(offer.offerer, offer.offerPrice);
-        _cancelOfferNFT(offer);
-    }
-
-    function cancelOfferNFTByETH(
-        address _nft,
-        uint256 _tokenId
-    ) external isOfferredNFT(_nft, _tokenId, msg.sender) {
-        OfferNFT memory offer = offerNfts[_nft][_tokenId][msg.sender];
-        require(offer.offerer == msg.sender, "not offerer");
-        require(!offer.accepted, "offer already accepted");
-        require(offer.payToken == address(0), "invalid pay token");
-        payable(offer.offerer).transfer(offer.offerPrice);
+        if (offer.payToken == address(0)) {
+            payable(offer.offerer).transfer(offer.offerPrice);
+        } else {
+            IERC20(offer.payToken).transfer(offer.offerer, offer.offerPrice);
+        }
         _cancelOfferNFT(offer);
     }
 
