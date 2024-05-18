@@ -245,8 +245,6 @@ contract NFTVerseMarketplace is Ownable, ReentrancyGuard {
         require(!listedNft.sold, "nft already sold");
         require(_price >= listedNft.price, "invalid price");
 
-        listedNft.sold = true;
-
         // Calculate & Transfer platfrom fee
         uint256 platformFeeTotal = calculatePlatformFee(_price);
         IERC20(listedNft.payToken).transferFrom(
@@ -276,8 +274,6 @@ contract NFTVerseMarketplace is Ownable, ReentrancyGuard {
         require(!listedNft.sold, "nft already sold");
         require(_price >= listedNft.price, "invalid price");
 
-        listedNft.sold = true;
-
         // Calculate & Transfer platfrom fee
         uint256 platformFeeTotal = calculatePlatformFee(_price);
         payable(feeRecipient).transfer(platformFeeTotal);
@@ -290,6 +286,8 @@ contract NFTVerseMarketplace is Ownable, ReentrancyGuard {
     }
 
     function _buyNFT(ListNFT storage listedNft, uint256 _price) internal {
+        listedNft.sold = true;
+
         // Transfer NFT to buyer
         IERC721(listedNft.nft).safeTransferFrom(
             address(this),
