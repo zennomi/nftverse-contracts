@@ -3,8 +3,8 @@
 pragma solidity ^0.8.4;
 
 import "@openzeppelin/contracts/token/ERC721/IERC721.sol";
-import "@openzeppelin/contracts/access/Ownable.sol";
-import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
+import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/security/ReentrancyGuardUpgradeable.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 /* NFT Marketplace
@@ -16,7 +16,7 @@ import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
     Bid place,
     & support Royalty
 */
-contract NFTVerseMarketplace is Ownable, ReentrancyGuard {
+contract NFTVerseMarketplace is OwnableUpgradeable, ReentrancyGuardUpgradeable {
     uint256 private platformFee;
     address private feeRecipient;
 
@@ -135,7 +135,15 @@ contract NFTVerseMarketplace is Ownable, ReentrancyGuard {
         address caller
     );
 
-    constructor(uint256 _platformFee, address _feeRecipient) {
+    event AddPayableToken(address indexed tokenAddress);
+
+    function initialize(
+        uint256 _platformFee,
+        address _feeRecipient
+    ) public initializer {
+        __Ownable_init();
+        __ReentrancyGuard_init();
+
         require(_platformFee <= 10000, "can't more than 10 percent");
         platformFee = _platformFee;
         feeRecipient = _feeRecipient;
@@ -264,7 +272,83 @@ contract NFTVerseMarketplace is Ownable, ReentrancyGuard {
         _buyNFT(listedNft, _price);
     }
 
+    function buyNFTs(
+        address[] memory _nfts,
+        uint256[] memory _tokenIds,
+        address[] memory _payTokens,
+        uint256[] memory _prices
+    ) external {
+        require(_nfts.length == _tokenIds.length, "invalid params");
+        require(_nfts.length == _prices.length, "invalid params");
+
+        for (uint256 i = 0; i < _nfts.length; i++) {
+            ListNFT storage listedNft = listNfts[_nfts[i]][_tokenIds[i]];
+            require(
+                listedNft.seller != address(0) && !listedNft.sold,
+                "not listed"
+            );
+            require(
+                _payTokens[i] != address(0) &&
+                    _payTokens[i] == listedNft.payToken,
+                "invalid pay token"
+            );
+            require(!listedNft.sold, "nft already sold");
+            require(_prices[i] >= listedNft.price, "invalid price");
+            // Calculate & Transfer platfrom fee
+            uint256 platformFeeTotal = calculatePlatformFee(_prices[i]);
+            IERC20(listedNft.payToken).transferFrom(
+                msg.sender,
+                feeRecipient,
+                platformFeeTotal
+            );
+
+            // Transfer to nft owner
+            IERC20(listedNft.payToken).transferFrom(
+                msg.sender,
+                listedNft.seller,
+                _prices[i] - platformFeeTotal
+            );
+
+            // Transfer NFT to buyer
+            _buyNFT(listedNft, _prices[i]);
+        }
+    }
+
     function buyNFTByETH(
+        address[] memory _nfts,
+        uint256[] memory _tokenIds,
+        uint256[] memory _prices
+    ) external payable {
+        require(_nfts.length == _tokenIds.length, "invalid params");
+        require(_nfts.length == _prices.length, "invalid params");
+
+        uint256 totalPrice;
+        for (uint256 i = 0; i < _nfts.length; i++) {
+            totalPrice += _prices[i];
+        }
+
+        require(msg.value >= totalPrice, "invalid msg.value");
+
+        for (uint256 i = 0; i < _nfts.length; i++) {
+            ListNFT storage listedNft = listNfts[_nfts[i]][_tokenIds[i]];
+            uint256 _price = _prices[i];
+            require(listedNft.payToken == address(0), "invalid pay token");
+            require(!listedNft.sold, "nft already sold");
+            require(_price >= listedNft.price, "invalid price");
+
+            // Calculate & Transfer platfrom fee
+            uint256 platformFeeTotal = calculatePlatformFee(_price);
+            payable(feeRecipient).transfer(platformFeeTotal);
+
+            // Transfer to nft owner
+            payable(listedNft.seller).transfer(_price - platformFeeTotal);
+
+            // Transfer NFT to buyer
+            _buyNFT(listedNft, _price);
+        }
+    }
+
+    function buyNFTsByETH(
         address _nft,
         uint256 _tokenId
     ) external payable isListedNFT(_nft, _tokenId) {
@@ -668,6 +752,8 @@ contract NFTVerseMarketplace is Ownable, ReentrancyGuard {
         require(!payableToken[_token], "already payable token");
         payableToken[_token] = true;
         tokens.push(_token);
+
+        emit AddPayableToken(_token);
     }
 
     function updatePlatformFee(uint256 _platformFee) external onlyOwner {
