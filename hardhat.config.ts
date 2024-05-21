@@ -41,12 +41,12 @@ const config: HardhatUserConfig = {
     ropsten: {
       url: process.env.ROPSTEN_URL || "",
       accounts:
-        process.env.PRIVATE_KEY !== undefined ? [process.env.PRIVATE_KEY] : [],
+        process.env.PRIVATE_KEY !== undefined ? process.env.PRIVATE_KEY.split(",") : [],
     },
     sepolia: {
       url: process.env.SEPOLIA_URL || "",
       accounts:
-        process.env.PRIVATE_KEY !== undefined ? [process.env.PRIVATE_KEY] : [],
+        process.env.PRIVATE_KEY !== undefined ? process.env.PRIVATE_KEY.split(",") : [],
       // gasPrice: 200e9,
       // gas: 30e6,
     },
