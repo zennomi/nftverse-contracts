@@ -78,6 +78,11 @@ contract NFTVerseMarketplace is OwnableUpgradeable, ReentrancyGuardUpgradeable {
         uint256 price,
         address indexed seller
     );
+    event CanceledListedNFT(
+        address indexed nft,
+        uint256 indexed tokenId,
+        address indexed seller
+    );
     event BoughtNFT(
         address indexed nft,
         uint256 indexed tokenId,
@@ -236,6 +241,7 @@ contract NFTVerseMarketplace is OwnableUpgradeable, ReentrancyGuardUpgradeable {
         require(listedNFT.seller == msg.sender, "not listed owner");
         IERC721(_nft).transferFrom(address(this), msg.sender, _tokenId);
         delete listNfts[_nft][_tokenId];
+        emit CanceledListedNFT(_nft, _tokenId, msg.sender);
     }
 
     // @notice Buy listed NFT
@@ -314,7 +320,7 @@ contract NFTVerseMarketplace is OwnableUpgradeable, ReentrancyGuardUpgradeable {
         }
     }
 
-    function buyNFTByETH(
+    function buyNFTsByETH(
         address[] memory _nfts,
         uint256[] memory _tokenIds,
         uint256[] memory _prices
@@ -348,7 +354,7 @@ contract NFTVerseMarketplace is OwnableUpgradeable, ReentrancyGuardUpgradeable {
         }
     }
 
-    function buyNFTsByETH(
+    function buyNFTByETH(
         address _nft,
         uint256 _tokenId
     ) external payable isListedNFT(_nft, _tokenId) {
