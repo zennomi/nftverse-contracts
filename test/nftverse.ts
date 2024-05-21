@@ -1,6 +1,6 @@
 import { expect } from "chai";
 import { BigNumber, Signer } from "ethers";
-import { ethers } from "hardhat";
+import { ethers, upgrades } from "hardhat";
 import { before } from "mocha";
 
 import {
@@ -38,7 +38,7 @@ describe("NFTVerse Marketplace", () => {
         const Marketplace = new NFTVerseMarketplace__factory(owner);
         const platformFee = BigNumber.from(10); // 10%
         const feeRecipient = await owner.getAddress();
-        marketplace = await Marketplace.deploy(platformFee, feeRecipient);
+        marketplace = await upgrades.deployProxy(Marketplace, [platformFee, feeRecipient]) as NFTVerseMarketplace;
         await marketplace.deployed();
         expect(marketplace.address).not.eq(null, "Deploy marketplace is failed.");
 
