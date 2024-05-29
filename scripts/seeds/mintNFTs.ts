@@ -1,6 +1,6 @@
 import { ethers } from 'hardhat';
-import { CommonNFT, CommonNFT__factory } from '../typechain';
-import SeedingNFTs from "./data/SeedingNFTs.json"
+import { CommonNFT, CommonNFT__factory } from '../../typechain';
+import SeedingNFTs from "../data/SeedingNFTs.json"
 
 async function main() {
     const NFT_ADDRESS = "0x6CAFc373A6C5F1428fC4008B267286CeffB31bb8"
