@@ -7,7 +7,7 @@ import "@openzeppelin/contracts/token/ERC721/extensions/ERC721URIStorage.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 
 contract CommonNFT is ERC721, ERC721URIStorage, Ownable {
-    constructor(address initialOwner) ERC721("MyNFT", "MNFT") {}
+    constructor(address initialOwner) ERC721("Lamborghini", "LBGN") {}
 
     uint256 private _nextTokenId;
 
