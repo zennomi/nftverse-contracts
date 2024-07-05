@@ -130,6 +130,11 @@ contract NFTVerseMarketplace is OwnableUpgradeable, ReentrancyGuardUpgradeable {
         uint256 bidPrice,
         address indexed bidder
     );
+    event CanceledAuction(
+        address indexed nft,
+        uint256 indexed tokenId,
+        address indexed creator
+    );
 
     event ResultedAuction(
         address indexed nft,
@@ -583,12 +588,13 @@ contract NFTVerseMarketplace is OwnableUpgradeable, ReentrancyGuardUpgradeable {
     ) external isAuction(_nft, _tokenId) {
         AuctionNFT memory auction = auctionNfts[_nft][_tokenId];
         require(auction.creator == msg.sender, "not auction creator");
-        require(block.timestamp < auction.startTime, "auction already started");
         require(auction.lastBidder == address(0), "already have bidder");
 
         IERC721 nft = IERC721(_nft);
         nft.transferFrom(address(this), msg.sender, _tokenId);
         delete auctionNfts[_nft][_tokenId];
+
+        emit CanceledAuction(_nft, _tokenId, msg.sender);
     }
 
     // @notice Bid place auction
