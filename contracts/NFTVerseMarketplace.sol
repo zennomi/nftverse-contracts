@@ -182,7 +182,7 @@ contract NFTVerseMarketplace is OwnableUpgradeable, ReentrancyGuardUpgradeable {
         AuctionNFT memory auction = auctionNfts[_nft][_tokenId];
         require(
             auction.nft != address(0) && !auction.success,
-            "auction already created"
+            "auction was not created"
         );
         _;
     }
