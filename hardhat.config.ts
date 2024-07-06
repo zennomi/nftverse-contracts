@@ -37,6 +37,7 @@ const config: HardhatUserConfig = {
       },
     ]
   },
+  defaultNetwork: "sepolia",
   networks: {
     ropsten: {
       url: process.env.ROPSTEN_URL || "",
